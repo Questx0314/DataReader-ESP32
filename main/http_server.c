@@ -17,6 +17,7 @@
 #include <sys/stat.h>
 #include "nvs_flash.h"
 #include "lwip/ip4_addr.h"
+#include "wifi_manager.h"
 
 static const char *TAG = "http_server";
 static httpd_handle_t server = NULL;
@@ -77,7 +78,23 @@ static esp_err_t root_get_handler(httpd_req_t *req)
     httpd_resp_send_chunk(req, NULL, 0);
     return ESP_OK;
 }
-
+// 处理重置连接尝试次数的请求
+static esp_err_t reset_connection_retry_handler(httpd_req_t *req)
+{
+    // 调用wifi_manager.c中的函数来重置重试计数
+    esp_err_t err = wifi_reset_connection_retry();
+    
+    const char *response;
+    if (err == ESP_OK) {
+        response = "{\"status\":\"success\",\"message\":\"Connection retry count reset\"}";
+    } else {
+        response = "{\"status\":\"error\",\"message\":\"Failed to reset connection retry\"}";
+    }
+    
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, response, strlen(response));
+    return ESP_OK;
+}
 // 处理WiFi扫描请求
 static esp_err_t scan_get_handler(httpd_req_t *req)
 {
@@ -437,6 +454,12 @@ static const httpd_uri_t delete_wifi = {
     .handler   = delete_wifi_post_handler,
     .user_ctx  = NULL
 };
+static const httpd_uri_t reset_retry = {
+    .uri       = "/api/reset_retry",
+    .method    = HTTP_POST,
+    .handler   = reset_connection_retry_handler,
+    .user_ctx  = NULL
+};
 
 // 启动Web服务器
 esp_err_t start_webserver(void)
@@ -466,6 +489,7 @@ esp_err_t start_webserver(void)
         httpd_register_uri_handler(server, &wifi_status);
         httpd_register_uri_handler(server, &saved_wifi);
         httpd_register_uri_handler(server, &delete_wifi);
+        httpd_register_uri_handler(server, &reset_retry);
         return ESP_OK;
     }
     

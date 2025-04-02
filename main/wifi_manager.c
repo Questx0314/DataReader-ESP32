@@ -160,7 +160,22 @@ esp_err_t wifi_init_softap(void)
              EXAMPLE_ESP_WIFI_SSID, EXAMPLE_ESP_WIFI_PASS, EXAMPLE_ESP_WIFI_CHANNEL);
     return ESP_OK;
 }
-
+esp_err_t wifi_reset_connection_retry(void)
+{
+    // 重置重试计数
+    s_retry_num = 0;
+    
+    // 重置NVS中的连接失败标志
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open("wifi_state", NVS_READWRITE, &nvs_handle);
+    if (err == ESP_OK) {
+        nvs_set_u8(nvs_handle, "connection_failed", 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+    
+    return ESP_OK;
+}
 #define DEFAULT_SCAN_LIST_SIZE 10  // 默认扫描列表大小
 
 // 扫描周围WiFi网络

@@ -457,6 +457,15 @@
             showStatus('正在连接到 ' + ssid + '...', 'loading');
             
             try {
+                // 首先重置重试计数
+                await fetch('/api/reset_retry', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                // 然后尝试连接
                 const response = await fetch('/api/connect', {
                     method: 'POST',
                     headers: {
@@ -465,12 +474,19 @@
                     body: JSON.stringify({ ssid: ssid })
                 });
                 
-                if (response.ok) {
-                    showStatus('连接成功！', 'success');
-                    setTimeout(getWiFiStatus, 2000);
-                } else {
-                    showStatus('连接失败', 'error');
-                }
+                // 获取连接状态
+                setTimeout(async () => {
+                    const statusResponse = await fetch('/api/status');
+                    const statusData = await statusResponse.json();
+                    
+                    if (statusData.status === 'connected') {
+                        showStatus('连接成功！', 'success');
+                    } else {
+                        showStatus('连接失败，请检查WiFi是否可用', 'error');
+                    }
+                    
+                    getWiFiStatus(); // 更新状态显示
+                }, 3000);
             } catch (error) {
                 showStatus('连接失败: ' + error.message, 'error');
             }
