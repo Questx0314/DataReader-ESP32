@@ -10,6 +10,8 @@
 #include "lwip/sys.h"
 #include "wifi_manager.h"
 
+#include "esp_mdns.h"  // mDNS支持
+
 // WiFi配置参数
 #define EXAMPLE_ESP_WIFI_SSID      CONFIG_ESP_WIFI_SSID        // WiFi名称
 #define EXAMPLE_ESP_WIFI_PASS      CONFIG_ESP_WIFI_PASSWORD    // WiFi密码
@@ -20,6 +22,7 @@ static const char *TAG = "wifi_manager";  // 日志标签
 
 #define MAX_RETRY_COUNT 5
 static int s_retry_num = 0;
+static bool mdns_initialized = false;
 
 // WiFi事件处理函数
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
@@ -66,7 +69,8 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                 break;
         }
     } else if (event_base == IP_EVENT) {
-        if (event_id == IP_EVENT_STA_GOT_IP) {
+        if (event_id == IP_EVENT_STA_GOT_IP) 
+        {
             ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
             ESP_LOGI(TAG, "获取到IP地址:" IPSTR, IP2STR(&event->ip_info.ip));
             s_retry_num = 0; // 重置重试计数
@@ -77,6 +81,12 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                 nvs_set_u8(nvs_handle, "connection_failed", 0);
                 nvs_commit(nvs_handle);
                 nvs_close(nvs_handle);
+            }
+                    // ✅ 启动 mDNS（只执行一次）
+            if (!mdns_initialized)
+            {
+                esp_mdns_start();
+                mdns_initialized = true;
             }
         }
     }

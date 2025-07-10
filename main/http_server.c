@@ -19,6 +19,8 @@
 #include "lwip/ip4_addr.h"
 #include "wifi_manager.h"
 
+#include "web_socket.h"
+
 static const char *TAG = "http_server";
 static httpd_handle_t server = NULL;
 
@@ -474,7 +476,7 @@ esp_err_t start_webserver(void)
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.lru_purge_enable = true;
-    config.max_uri_handlers = 9;
+    config.max_uri_handlers = 10;
     config.server_port = 8080;
     
     ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
@@ -490,6 +492,7 @@ esp_err_t start_webserver(void)
         httpd_register_uri_handler(server, &saved_wifi);
         httpd_register_uri_handler(server, &delete_wifi);
         httpd_register_uri_handler(server, &reset_retry);
+        websocket_start(server);
         return ESP_OK;
     }
     
