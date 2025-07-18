@@ -15,8 +15,33 @@
 #include "esp_spiffs.h"
 #include "wifi_manager.h"
 #include "http_server.h"
+#include "web_socket.h"
+#include "usbd_cdc.h"
 
 static const char *TAG = "main";
+
+// 系统监控配置常量
+#define SYSTEM_INIT_DELAY_MS     5000
+#define SYSTEM_MONITOR_INTERVAL_MS 3000
+#define WEBSOCKET_CONNECT_DELAY_MS 1000
+#define SYSTEM_MONITOR_TASK_PRIORITY 2
+#define SYSTEM_MONITOR_STACK_SIZE 4096
+
+// 简单的状态结构
+static struct {
+    bool cdc_connected;
+    bool ws_connected;
+} system_status = {false, false};
+
+// 安全发送WebSocket消息 (非阻塞方式)
+static void notify_status_change(const char *event) {
+    // 只有在WebSocket连接时才发送
+    if (websocket_is_connected() && event != NULL) {
+        char msg[32];
+        snprintf(msg, sizeof(msg), "{\"event\":\"%s\"}", event);
+        websocket_server_send_text(msg);
+    }
+}
 
 // 初始化SPIFFS
 static esp_err_t init_spiffs(void)
@@ -26,7 +51,7 @@ static esp_err_t init_spiffs(void)
     esp_vfs_spiffs_conf_t conf = {
         .base_path = "/spiffs",
         .partition_label = NULL,
-        .max_files = 5,   // 最大打开文件数
+        .max_files = 5,
         .format_if_mount_failed = false
     };
 
@@ -53,6 +78,61 @@ static esp_err_t init_spiffs(void)
     return ESP_OK;
 }
 
+// 初始化USB CDC Host
+static esp_err_t init_usb_cdc(void)
+{
+    ESP_LOGI(TAG, "初始化USB CDC Host");
+    
+    // 初始化USB CDC Host，设置接收回调函数为web_socket.c中的usb_cdc_rx_callback
+    esp_err_t ret = usbd_cdc_init(usb_cdc_rx_callback);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "初始化USB CDC Host失败: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    ESP_LOGI(TAG, "USB CDC Host初始化成功，等待设备连接...");
+    return ESP_OK;
+}
+
+// 系统状态监控任务
+static void system_monitor_task(void *pvParameters)
+{
+    // 等待系统初始化稳定
+    vTaskDelay(pdMS_TO_TICKS(SYSTEM_INIT_DELAY_MS));
+    ESP_LOGI(TAG, "系统监控任务开始运行");
+
+    while (1) {
+        // 检查CDC连接状态
+        bool cdc_connected = usbd_cdc_is_connected();
+        if (cdc_connected != system_status.cdc_connected) {
+            ESP_LOGI(TAG, "CDC连接状态变化: %s", cdc_connected ? "已连接" : "已断开");
+            system_status.cdc_connected = cdc_connected;
+            
+            // 状态变化时通知WebSocket (如果连接)
+            if (system_status.ws_connected) {
+                notify_status_change(cdc_connected ? "cdc_connect" : "cdc_disconnect");
+            }
+        }
+        
+        // 检查WebSocket连接状态
+        bool ws_connected = websocket_is_connected();
+        if (ws_connected != system_status.ws_connected) {
+            ESP_LOGI(TAG, "WebSocket连接状态变化: %s", ws_connected ? "已连接" : "已断开");
+            system_status.ws_connected = ws_connected;
+            
+            // 如果WebSocket新连接，并且CDC已连接，发送CDC状态
+            if (ws_connected && system_status.cdc_connected) {
+                // 等待连接稳定后再发送
+                vTaskDelay(pdMS_TO_TICKS(WEBSOCKET_CONNECT_DELAY_MS));
+                notify_status_change("cdc_connect");
+            }
+        }
+
+        // 定期检查系统状态
+        vTaskDelay(pdMS_TO_TICKS(SYSTEM_MONITOR_INTERVAL_MS));
+    }
+}
+
 void app_main(void)
 {
     // 初始化NVS
@@ -70,7 +150,14 @@ void app_main(void)
     ESP_LOGI(TAG, "Starting WiFi in AP mode");
     ESP_ERROR_CHECK(wifi_init_softap());
 
+    // 初始化USB CDC Host
+    ESP_ERROR_CHECK(init_usb_cdc());
+
     // 启动HTTP服务器
     ESP_ERROR_CHECK(start_webserver());
-    ESP_LOGI(TAG, "System initialized successfully");
+    
+    // 创建系统监控任务，设置更低的优先级
+    xTaskCreate(system_monitor_task, "system_monitor", SYSTEM_MONITOR_STACK_SIZE, NULL, SYSTEM_MONITOR_TASK_PRIORITY, NULL);
+    
+    ESP_LOGI(TAG, "系统初始化完成");
 }

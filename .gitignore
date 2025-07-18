@@ -39,3 +39,5 @@ Thumbs.db
 *.bak
 *.tmp
 *.temp
+/.vscode
+/managed_components
