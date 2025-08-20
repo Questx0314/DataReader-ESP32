@@ -166,14 +166,14 @@ static void usb_cdc_host_task(void *arg)
                     ESP_LOGW(TAG, "设置控制线状态失败: %s", esp_err_to_name(err));
                 }
                 
-                // 发送测试数据
-                const char *test_str = "CDC test initialized!";
-                err = cdc_acm_host_data_tx_blocking(dev->cdc_hdl, (const uint8_t *)test_str, strlen(test_str), CDC_TX_TIMEOUT_MS);
-                if (err != ESP_OK) {
-                    ESP_LOGW(TAG, "发送测试数据失败: %s", esp_err_to_name(err));
-                } else {
-                    ESP_LOGI(TAG, "发送测试数据成功");
-                }
+                // // 发送测试数据
+                // const char *test_str = "CDC test initialized!";
+                // err = cdc_acm_host_data_tx_blocking(dev->cdc_hdl, (const uint8_t *)test_str, strlen(test_str), CDC_TX_TIMEOUT_MS);
+                // if (err != ESP_OK) {
+                //     ESP_LOGW(TAG, "发送测试数据失败: %s", esp_err_to_name(err));
+                // } else {
+                //     ESP_LOGI(TAG, "发送测试数据成功");
+                // }
                 
                 retry_count = 0;
             } else {
@@ -275,7 +275,6 @@ esp_err_t usbd_cdc_init(usbd_cdc_rx_callback_t rx_cb)
     memset(&s_cdc_dev, 0, sizeof(cdc_dev_context_t));
     s_cdc_dev.state = CDC_DEVICE_STATE_DISCONNECTED;
     s_cdc_dev.rx_cb = rx_cb;
-    s_cdc_dev.mutex = xSemaphoreCreateMutex();
     s_cdc_dev.is_initialized = true;
     
     // 创建CDC Host任务

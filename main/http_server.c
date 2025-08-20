@@ -18,6 +18,7 @@
 #include "nvs_flash.h"
 #include "lwip/ip4_addr.h"
 #include "wifi_manager.h"
+#include "wifi_history.h"
 
 #include "web_socket.h"
 
@@ -251,6 +252,11 @@ static esp_err_t configure_post_handler(httpd_req_t *req)
         ESP_LOGI(TAG, "WiFi配置已保存到NVS");
     }
     
+    // 添加到WiFi历史记录
+    wifi_history_add_network(ssid->valuestring, 
+                            password && cJSON_IsString(password) ? password->valuestring : "",
+                            NULL, 0, WIFI_AUTH_OPEN, -50);
+    
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
     ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_connect());
@@ -312,15 +318,35 @@ static esp_err_t wifi_status_get_handler(httpd_req_t *req)
 // 获取已保存的WiFi列表
 static esp_err_t saved_wifi_get_handler(httpd_req_t *req)
 {
-    wifi_config_t wifi_config;
     cJSON *root = cJSON_CreateArray();
     char *response = NULL;
 
-    esp_err_t err = esp_wifi_get_config(ESP_IF_WIFI_STA, &wifi_config);
-    if (err == ESP_OK && strlen((char*)wifi_config.sta.ssid) > 0) {
-        cJSON *wifi = cJSON_CreateObject();
-        cJSON_AddStringToObject(wifi, "ssid", (char*)wifi_config.sta.ssid);
-        cJSON_AddItemToArray(root, wifi);
+    // 从WiFi历史记录获取网络列表
+    wifi_history_entry_t networks[WIFI_HISTORY_MAX_NETWORKS];
+    uint8_t count = WIFI_HISTORY_MAX_NETWORKS;
+    
+    esp_err_t err = wifi_history_get_networks(networks, &count);
+    if (err == ESP_OK) {
+        for (int i = 0; i < count; i++) {
+            cJSON *wifi = cJSON_CreateObject();
+            cJSON_AddStringToObject(wifi, "ssid", networks[i].ssid);
+            cJSON_AddNumberToObject(wifi, "priority", networks[i].priority);
+            cJSON_AddNumberToObject(wifi, "connect_count", networks[i].connect_count);
+            cJSON_AddNumberToObject(wifi, "last_connected", networks[i].last_connected);
+            cJSON_AddItemToArray(root, wifi);
+        }
+    } else {
+        // 回退到旧方法
+        wifi_config_t wifi_config;
+        err = esp_wifi_get_config(ESP_IF_WIFI_STA, &wifi_config);
+        if (err == ESP_OK && strlen((char*)wifi_config.sta.ssid) > 0) {
+            cJSON *wifi = cJSON_CreateObject();
+            cJSON_AddStringToObject(wifi, "ssid", (char*)wifi_config.sta.ssid);
+            cJSON_AddNumberToObject(wifi, "priority", 100);
+            cJSON_AddNumberToObject(wifi, "connect_count", 1);
+            cJSON_AddNumberToObject(wifi, "last_connected", 0);
+            cJSON_AddItemToArray(root, wifi);
+        }
     }
 
     response = cJSON_PrintUnformatted(root);
@@ -355,6 +381,12 @@ static esp_err_t delete_wifi_post_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
+    // 从WiFi历史记录中删除
+    esp_err_t err = wifi_history_remove_network(ssid->valuestring);
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "已从WiFi历史记录中删除: %s", ssid->valuestring);
+    }
+    
     wifi_config_t wifi_config;
     if (esp_wifi_get_config(ESP_IF_WIFI_STA, &wifi_config) == ESP_OK) {
         if (strcmp((char*)wifi_config.sta.ssid, ssid->valuestring) == 0) {
@@ -368,7 +400,7 @@ static esp_err_t delete_wifi_post_handler(httpd_req_t *req)
             
             // 清除自定义NVS中的WiFi配置
             nvs_handle_t nvs_handle;
-            esp_err_t err = nvs_open("wifi_config", NVS_READWRITE, &nvs_handle);
+            err = nvs_open("wifi_config", NVS_READWRITE, &nvs_handle);
             if (err == ESP_OK) {
                 err = nvs_erase_all(nvs_handle);
                 if (err == ESP_OK) {

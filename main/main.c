@@ -146,8 +146,8 @@ void app_main(void)
     // 初始化SPIFFS
     ESP_ERROR_CHECK(init_spiffs());
 
-    // 初始化并启动WiFi AP
-    ESP_LOGI(TAG, "Starting WiFi in AP mode");
+    // 初始化并启动WiFi AP (包含智能连接功能)
+    ESP_LOGI(TAG, "Starting WiFi in AP mode with smart connect");
     ESP_ERROR_CHECK(wifi_init_softap());
 
     // 初始化USB CDC Host
