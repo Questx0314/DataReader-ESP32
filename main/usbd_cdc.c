@@ -166,7 +166,11 @@ static void usb_cdc_host_task(void *arg)
                     ESP_LOGW(TAG, "设置控制线状态失败: %s", esp_err_to_name(err));
                 }
                 
+<<<<<<< Updated upstream
                 // // 发送测试数据
+=======
+                // 发送测试数据
+>>>>>>> Stashed changes
                 // const char *test_str = "CDC test initialized!";
                 // err = cdc_acm_host_data_tx_blocking(dev->cdc_hdl, (const uint8_t *)test_str, strlen(test_str), CDC_TX_TIMEOUT_MS);
                 // if (err != ESP_OK) {
